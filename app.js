@@ -5,7 +5,10 @@ const bodyParser = require("body-Parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 // const encrypt = require("mongoose-encryption");
-const md5 = require("md5");
+// const md5 = require("md5");
+const bcrypt = require('bcryptjs');
+
+const salt = bcrypt.genSaltSync(10);
 
 const app = express();
 
@@ -44,7 +47,7 @@ app.get("/register",function(req,res){
 app.post("/register", function(req ,res){
   const newUser = new usermodel({
     email:req.body.username,
-    password:md5(req.body.password)
+    password: bcrypt.hashSync(req.body.password , salt)
   });
   newUser.save(function(err){
     if(err){
@@ -60,15 +63,15 @@ app.post("/register", function(req ,res){
 app.post("/login", function(req ,res){
 
   const username = req.body.username;
-  const   password = md5(req.body.password)
+  //const   password =  bcrypt.compareSync(req.body.password);
 usermodel.findOne({emai:username},function(err ,finduser){
 if(err){
   console.log(err);
 }  else{
 
   if(finduser){
-    
-    if(finduser.password === password){
+
+  if (bcrypt.compareSync(req.body.password, finduser.password)) {
 
 
       res.render("Secrets")
