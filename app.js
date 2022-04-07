@@ -12,6 +12,9 @@ const mongoose = require("mongoose");
 const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose= require('passport-Local-Mongoose');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require("mongoose-findorcreate");
+
 
 const app = express();
 
@@ -35,12 +38,14 @@ mongoose.connect("mongodb://localhost:27017/userDB");
 
 const userSchema =  new mongoose.Schema ( {
   email:String,
-  password:String
+  password:String,
+  googleId:String,
+  secret:String
 });
 
 
 userSchema.plugin(passportLocalMongoose);
-
+userSchema.plugin(findOrCreate);
 // const secret = process.env.SECRETS;
 //
 // userSchema.plugin(encrypt, { secret: secret ,encryptedFields: ['password']});
@@ -52,13 +57,47 @@ const usermodel = new mongoose.model("user" , userSchema);
 passport.use(usermodel.createStrategy());
 
 // use static serialize and deserialize of model for passport session support
-passport.serializeUser(usermodel.serializeUser());
-passport.deserializeUser(usermodel.deserializeUser());
+// passport.serializeUser(usermodel.serializeUser());
+// passport.deserializeUser(usermodel.deserializeUser());
+
+passport.serializeUser(function(usermodel, done) {
+  done(null, usermodel);
+});
+
+passport.deserializeUser(function(usermodel, done) {
+  done(null, usermodel);
+});
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SCRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileUrl:"https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    usermodel.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 
 app.get("/",function(req,res){
   res.render("home")
 })
+
+app.get("/auth/google" ,
+passport.authenticate("google" , {scope: ["profile"]})
+
+);
+
+app.get("/auth/google/secrets",
+  passport.authenticate('google', { failureRedirect: "/login" }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect("/Secrets");
+  });
 
 app.get("/login",function(req,res){
   res.render("login")
@@ -73,13 +112,57 @@ app.get("/register",function(req,res){
 })
 
 app.get("/Secrets" , function(req , res){
+
+usermodel.find({"secret":{$ne:null}},function(err,founduser){
+  if(err){
+    console.log(err);
+  }else{
+    if(founduser) {
+      res.render("secrets" , {userwithsecret:founduser})
+    }
+  }
+})
+
+
+
+
+  // if(req.isAuthenticated ())
+  // {
+  //   res.render("Secrets");
+  // }
+  // else{
+  //   res.redirect("/login");
+  // }
+})
+
+app.get("/submit" , function(req , res){
+
   if(req.isAuthenticated ())
   {
-    res.render("Secrets");
+    res.render("submit");
   }
   else{
     res.redirect("/login");
   }
+})
+
+
+app.post("/submit" , function(req ,res){
+  const submittedSecret = req.body.secret;
+  console.log("my user" + req.user._id);
+
+usermodel.findById(req.user._id,function(err,founduser){
+  if(err){
+    console.log(err);
+  }else{
+    if(founduser){
+      founduser.secret = submittedSecret ;
+      founduser.save();
+    res.redirect("/secrets");
+    }
+  }
+})
+
 })
 
 app.post("/register", function(req ,res){
